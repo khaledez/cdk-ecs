@@ -51,6 +51,9 @@ export class InfraStack extends cdk.Stack {
           streamPrefix: taskName,
           logRetention: RetentionDays.ONE_DAY,
         }),
+        environment: {
+          PORT: "80",
+        },
       })
       .addPortMappings({
         containerPort: 80,
