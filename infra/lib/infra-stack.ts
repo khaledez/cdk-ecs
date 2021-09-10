@@ -37,30 +37,27 @@ export class InfraStack extends cdk.Stack {
       this,
       `${taskName}-definition`,
       {
-        memoryLimitMiB: 512,
-        cpu: 256,
         taskRole,
+        cpu: 256,
+        memoryLimitMiB: 512,
       }
     );
 
-    const xraydContainer = demoTaskDefinition.addContainer("xray-daemon", {
+    demoTaskDefinition.addContainer("xray-daemon", {
       image: ecs.ContainerImage.fromRegistry(
         "public.ecr.aws/xray/aws-xray-daemon:latest"
       ),
       containerName: "xray-daemon",
-      memoryLimitMiB: 512,
-      cpu: 0.25,
+      memoryLimitMiB: 256,
+      cpu: 32,
       logging: ecs.LogDrivers.awsLogs({
         logRetention: RetentionDays.ONE_DAY,
         streamPrefix: `${taskName}-xray`,
       }),
-    });
-    xraydContainer.addPortMappings({
-      protocol: ecs.Protocol.UDP,
-      containerPort: 2000,
+      portMappings: [{ containerPort: 2000 }],
     });
 
-    const demoTaskContainer = demoTaskDefinition.addContainer("DemoContainer", {
+    demoTaskDefinition.addContainer("DemoContainer", {
       image: ecs.ContainerImage.fromRegistry(
         `${this.account}.dkr.ecr.${this.region}.amazonaws.com/prometheus-nodejs:latest`
       ),
@@ -71,12 +68,8 @@ export class InfraStack extends cdk.Stack {
       }),
       environment: {
         PORT: "80",
-        AWS_XRAY_DAEMON_ADDRESS: "xray-daemon:2000",
       },
-    });
-    demoTaskContainer.addLink(xraydContainer);
-    demoTaskContainer.addPortMappings({
-      containerPort: 80,
+      portMappings: [{ containerPort: 80 }],
     });
 
     new ecs_patterns.ApplicationLoadBalancedFargateService(
