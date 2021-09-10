@@ -11,6 +11,8 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
+    "aws-xray-sdk-core": "^3.3.3",
+    "aws-xray-sdk-express": "^3.3.3",
     "express": "^4.17.1",
     "express-prom-bundle": "^6.4.1",
     "prom-client": "^13.2.0"

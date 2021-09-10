@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/bin/sh -e
 
 image_domain='427368570714.dkr.ecr.ca-central-1.amazonaws.com'
 image_name="prometheus-nodejs"

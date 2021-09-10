@@ -1,6 +1,9 @@
+require("aws-xray-sdk-core");
+const xrayExpress = require("aws-xray-sdk-express");
 const promBundle = require("express-prom-bundle");
 const app = require("express")();
 const metricsMiddleware = promBundle({ includeMethod: true });
+app.use(xrayExpress.openSegment("defaultName"));
 
 app.use(metricsMiddleware);
 
@@ -13,6 +16,8 @@ app.use((req, res, next) => {
 
 app.use("/health", (req, res) => res.send("healthy"));
 app.use("/", (req, res) => res.send("Hello, World"));
+
+app.use(xrayExpress.closeSegment());
 
 app.listen(process.env.PORT || 3000, () =>
   console.log("server is listening on 3000")
