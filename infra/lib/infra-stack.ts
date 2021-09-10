@@ -22,7 +22,7 @@ export class InfraStack extends cdk.Stack {
       clusterName: `${stage}-ecs-cluster`,
     });
 
-    const taskRole = new iam.Role(this, "DemoTaskRole", {
+    const taskRole = new iam.Role(this, "ECSTaskRole", {
       assumedBy: new iam.ServicePrincipal("ecs-tasks.amazonaws.com"),
       managedPolicies: [
         iam.ManagedPolicy.fromAwsManagedPolicyName(
@@ -35,7 +35,7 @@ export class InfraStack extends cdk.Stack {
 
     const demoTaskDefinition = new ecs.FargateTaskDefinition(
       this,
-      `${stage}-demo-task-definition`,
+      `${taskName}-definition`,
       {
         memoryLimitMiB: 512,
         cpu: 256,
@@ -45,7 +45,7 @@ export class InfraStack extends cdk.Stack {
 
     demoTaskDefinition
       .addContainer("DemoContainer", {
-        image: ecs.ContainerImage.fromAsset("../promethus-nodejs"),
+        image: ecs.ContainerImage.fromRegistry(`${this.account}.dkr.ecr.${this.region}.amazonaws.com/prometheus-nodejs:latest`),
         memoryLimitMiB: 512,
         logging: ecs.LogDrivers.awsLogs({
           streamPrefix: taskName,
