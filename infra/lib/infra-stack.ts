@@ -1,9 +1,10 @@
 import * as ec2 from "@aws-cdk/aws-ec2";
 import * as ecs from "@aws-cdk/aws-ecs";
-import * as ecs_patterns from "@aws-cdk/aws-ecs-patterns";
+import * as elbv2 from "@aws-cdk/aws-elasticloadbalancingv2";
 import * as iam from "@aws-cdk/aws-iam";
-import { RetentionDays } from "@aws-cdk/aws-logs";
+import { LogGroup, RetentionDays } from "@aws-cdk/aws-logs";
 import * as cdk from "@aws-cdk/core";
+import { Construct, RemovalPolicy } from "@aws-cdk/core";
 
 export class InfraStack extends cdk.Stack {
   constructor(scope: cdk.Construct, id: string, props?: cdk.StackProps) {
@@ -16,6 +17,8 @@ export class InfraStack extends cdk.Stack {
       maxAzs: 3,
       natGateways: 1,
     });
+
+    const lbListener = loadBalancer(this, vpc);
 
     const cluster = new ecs.Cluster(this, "ECSCluster", {
       vpc,
@@ -38,52 +41,81 @@ export class InfraStack extends cdk.Stack {
       `${taskName}-definition`,
       {
         taskRole,
-        cpu: 256,
-        memoryLimitMiB: 512,
+        cpu: 1024,
+        memoryLimitMiB: 2048,
       }
     );
 
-    demoTaskDefinition.addContainer("xray-daemon", {
-      image: ecs.ContainerImage.fromRegistry(
-        "public.ecr.aws/xray/aws-xray-daemon:latest"
-      ),
-      containerName: "xray-daemon",
-      memoryLimitMiB: 256,
-      cpu: 32,
-      logging: ecs.LogDrivers.awsLogs({
-        logRetention: RetentionDays.ONE_DAY,
-        streamPrefix: `${taskName}-xray`,
-      }),
-      portMappings: [{ containerPort: 2000 }],
+    const logGroup = new LogGroup(this, "container log group", {
+      logGroupName: `/ecs/${stage}/DemoTask/container`,
+      retention: RetentionDays.ONE_DAY,
+      removalPolicy: RemovalPolicy.DESTROY,
     });
 
     demoTaskDefinition.addContainer("DemoContainer", {
+      containerName: "DemoContainer",
       image: ecs.ContainerImage.fromRegistry(
-        `${this.account}.dkr.ecr.${this.region}.amazonaws.com/prometheus-nodejs:latest`
+        `khaledez/prometheus-nodejs-sample:latest`
       ),
       memoryLimitMiB: 512,
       logging: ecs.LogDrivers.awsLogs({
         streamPrefix: taskName,
-        logRetention: RetentionDays.ONE_DAY,
+        logGroup,
       }),
       environment: {
-        PORT: "80",
+        PORT: "3000",
       },
-      portMappings: [{ containerPort: 80 }],
+      portMappings: [{ containerPort: 3000 }],
     });
 
-    new ecs_patterns.ApplicationLoadBalancedFargateService(
-      this,
-      `${stage}-demo-service-with-lb`,
-      {
-        cluster,
-        cpu: 512,
-        desiredCount: 1,
-        memoryLimitMiB: 512,
-        publicLoadBalancer: true,
-        taskDefinition: demoTaskDefinition,
-        listenerPort: 80,
-      }
-    );
+    // demoTaskDefinition.addContainer("xray-daemon", {
+    //   containerName: "xray-daemon",
+    //   image: ecs.ContainerImage.fromRegistry(
+    //     "public.ecr.aws/xray/aws-xray-daemon:latest"
+    //   ),
+    //   portMappings: [{ protocol: ecs.Protocol.UDP, containerPort: 2000 }],
+    // });
+
+    const demoService = new ecs.FargateService(this, "DemoService", {
+      cluster,
+      taskDefinition: demoTaskDefinition,
+      serviceName: `${taskName}-ervice`,
+      desiredCount: 1,
+      assignPublicIp: false,
+    });
+
+    new elbv2.ApplicationListenerRule(this, "LBRuleDemoTask", {
+      listener: lbListener,
+      priority: 1,
+      conditions: [elbv2.ListenerCondition.pathPatterns(["/*"])],
+      targetGroups: [
+        lbListener.addTargets("DemoTaskTarget", {
+          targetGroupName: `${stage}-demo-task-http-target`,
+          protocol: elbv2.ApplicationProtocol.HTTP,
+          port: 3000,
+          healthCheck: {
+            path: "/",
+            port: "3000",
+            interval: cdk.Duration.minutes(1),
+          },
+          targets: [demoService],
+        }),
+      ],
+    });
   }
+}
+
+function loadBalancer(
+  contruct: Construct,
+  vpc: ec2.Vpc
+): elbv2.ApplicationListener {
+  const lb = new elbv2.ApplicationLoadBalancer(contruct, `LoadBalancer`, {
+    vpc,
+    internetFacing: true,
+  });
+
+  return lb.addListener("HTTP Listener", {
+    protocol: elbv2.ApplicationProtocol.HTTP,
+    port: 80,
+  });
 }
